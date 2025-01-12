@@ -21,34 +21,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchSchedules, createSchedule, updateSchedule, deleteSchedule } from "@/api/schedules";
 import type { Schedule, Frequency } from "@/types";
-
-const columns: ColumnDef<Schedule>[] = [
-  {
-    accessorKey: "frequency",
-    header: "Frequency",
-  },
-  {
-    accessorKey: "retention",
-    header: "Retention Period",
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      const schedule = row.original;
-      return (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      );
-    },
-  },
-];
 
 const frequencies: Frequency[] = [
   "hourly",
@@ -58,31 +33,106 @@ const frequencies: Frequency[] = [
   "yearly",
 ];
 
-const mockSchedules: Schedule[] = [
-  {
-    id: "1",
-    frequency: "daily",
-    retention: "1y2m3d4h",
-  },
-];
-
 export default function SchedulesPage() {
-  const [schedules, setSchedules] = useState<Schedule[]>(mockSchedules);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch schedules
+  const { data: schedules = [] } = useQuery({
+    queryKey: ["schedules"],
+    queryFn: fetchSchedules,
+  });
+
+  // Create schedule mutation
+  const createScheduleMutation = useMutation({
+    mutationFn: createSchedule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      setIsDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Schedule created successfully",
+      });
+    },
+  });
+
+  // Update schedule mutation
+  const updateScheduleMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Schedule> }) =>
+      updateSchedule(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      toast({
+        title: "Success",
+        description: "Schedule updated successfully",
+      });
+    },
+  });
+
+  // Delete schedule mutation
+  const deleteScheduleMutation = useMutation({
+    mutationFn: deleteSchedule,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      toast({
+        title: "Success",
+        description: "Schedule deleted successfully",
+      });
+    },
+  });
+
+  const columns: ColumnDef<Schedule>[] = [
+    {
+      accessorKey: "frequency",
+      header: "Frequency",
+    },
+    {
+      accessorKey: "retention",
+      header: "Retention Period",
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const schedule = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                // TODO: Implement edit functionality
+                updateScheduleMutation.mutate({
+                  id: schedule.id,
+                  data: { ...schedule },
+                });
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                deleteScheduleMutation.mutate(schedule.id);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
 
   const handleAddSchedule = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const newSchedule: Schedule = {
-      id: crypto.randomUUID(),
+    const newSchedule = {
       frequency: formData.get("frequency") as Frequency,
       retention: formData.get("retention") as string,
     };
-    setSchedules([...schedules, newSchedule]);
-    toast({
-      title: "Schedule added",
-      description: "The schedule has been added successfully.",
-    });
+    createScheduleMutation.mutate(newSchedule);
   };
 
   return (
@@ -91,7 +141,7 @@ export default function SchedulesPage() {
         title="Schedules"
         description="Manage your backup schedules"
       >
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />

@@ -14,90 +14,147 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchApplications,
+  createApplication,
+  updateApplication,
+  deleteApplication,
+  startBackup,
+} from "@/api/applications";
 import type { Application } from "@/types";
 
-const columns: ColumnDef<Application>[] = [
-  {
-    accessorKey: "name",
-    header: "Name",
-  },
-  {
-    accessorKey: "schedules",
-    header: "Schedules",
-    cell: ({ row }) => {
-      const schedules = row.original.schedules;
-      return <span>{schedules.length} schedules</span>;
-    },
-  },
-  {
-    accessorKey: "sourceDirectories",
-    header: "Source Directories",
-    cell: ({ row }) => {
-      const dirs = row.original.sourceDirectories;
-      return <span>{dirs.length} directories</span>;
-    },
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      const app = row.original;
-      const { toast } = useToast();
-
-      const handleBackup = () => {
-        toast({
-          title: "Backup started",
-          description: `Backup for ${app.name} has been initiated.`,
-        });
-      };
-
-      return (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={handleBackup}>
-            <Play className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      );
-    },
-  },
-];
-
-const mockApplications: Application[] = [
-  {
-    id: "1",
-    name: "Database Backup",
-    schedules: [],
-    sourceDirectories: [],
-    destinationDirectories: [],
-    scripts: [],
-  },
-];
-
 export default function ApplicationsPage() {
-  const [applications, setApplications] = useState<Application[]>(mockApplications);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch applications
+  const { data: applications = [] } = useQuery({
+    queryKey: ["applications"],
+    queryFn: fetchApplications,
+  });
+
+  // Create application mutation
+  const createApplicationMutation = useMutation({
+    mutationFn: createApplication,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["applications"] });
+      setIsDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Application created successfully",
+      });
+    },
+  });
+
+  // Update application mutation
+  const updateApplicationMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Application> }) =>
+      updateApplication(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["applications"] });
+      toast({
+        title: "Success",
+        description: "Application updated successfully",
+      });
+    },
+  });
+
+  // Delete application mutation
+  const deleteApplicationMutation = useMutation({
+    mutationFn: deleteApplication,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["applications"] });
+      toast({
+        title: "Success",
+        description: "Application deleted successfully",
+      });
+    },
+  });
+
+  // Start backup mutation
+  const startBackupMutation = useMutation({
+    mutationFn: startBackup,
+    onSuccess: () => {
+      toast({
+        title: "Backup started",
+        description: "The backup process has been initiated",
+      });
+    },
+  });
+
+  const columns: ColumnDef<Application>[] = [
+    {
+      accessorKey: "name",
+      header: "Name",
+    },
+    {
+      accessorKey: "schedules",
+      header: "Schedules",
+      cell: ({ row }) => {
+        const schedules = row.original.schedules;
+        return <span>{schedules.length} schedules</span>;
+      },
+    },
+    {
+      accessorKey: "sourceDirectories",
+      header: "Source Directories",
+      cell: ({ row }) => {
+        const dirs = row.original.sourceDirectories;
+        return <span>{dirs.length} directories</span>;
+      },
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const app = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => startBackupMutation.mutate(app.id)}
+            >
+              <Play className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                // TODO: Implement edit functionality
+                updateApplicationMutation.mutate({
+                  id: app.id,
+                  data: { ...app },
+                });
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => deleteApplicationMutation.mutate(app.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
 
   const handleAddApplication = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const newApplication: Application = {
-      id: crypto.randomUUID(),
+    const newApplication: Omit<Application, "id"> = {
       name: formData.get("name") as string,
       schedules: [],
       sourceDirectories: [],
       destinationDirectories: [],
       scripts: [],
     };
-    setApplications([...applications, newApplication]);
-    toast({
-      title: "Application added",
-      description: `Application ${newApplication.name} has been added successfully.`,
-    });
+    createApplicationMutation.mutate(newApplication);
   };
 
   return (
@@ -106,7 +163,7 @@ export default function ApplicationsPage() {
         title="Applications"
         description="Manage your backup applications"
       >
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
