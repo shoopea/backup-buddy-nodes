@@ -14,77 +14,122 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchNodes, createNode, updateNode, deleteNode } from "@/api/nodes";
 import type { Node } from "@/types";
 
-const columns: ColumnDef<Node>[] = [
-  {
-    accessorKey: "name",
-    header: "Name",
-  },
-  {
-    accessorKey: "host",
-    header: "Host",
-  },
-  {
-    accessorKey: "port",
-    header: "Port",
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      const node = row.original;
-      return (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon">
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      );
-    },
-  },
-];
-
-const mockNodes: Node[] = [
-  {
-    id: "1",
-    name: "Production Server",
-    host: "192.168.1.100",
-    port: 22,
-    key: "ssh-rsa AAAA...",
-  },
-];
-
 export default function NodesPage() {
-  const [nodes, setNodes] = useState<Node[]>(mockNodes);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch nodes
+  const { data: nodes = [] } = useQuery({
+    queryKey: ["nodes"],
+    queryFn: fetchNodes,
+  });
+
+  // Create node mutation
+  const createNodeMutation = useMutation({
+    mutationFn: createNode,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      setIsDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Node created successfully",
+      });
+    },
+  });
+
+  // Update node mutation
+  const updateNodeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Node> }) =>
+      updateNode(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      toast({
+        title: "Success",
+        description: "Node updated successfully",
+      });
+    },
+  });
+
+  // Delete node mutation
+  const deleteNodeMutation = useMutation({
+    mutationFn: deleteNode,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["nodes"] });
+      toast({
+        title: "Success",
+        description: "Node deleted successfully",
+      });
+    },
+  });
+
+  const columns: ColumnDef<Node>[] = [
+    {
+      accessorKey: "name",
+      header: "Name",
+    },
+    {
+      accessorKey: "host",
+      header: "Host",
+    },
+    {
+      accessorKey: "port",
+      header: "Port",
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const node = row.original;
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                // TODO: Implement edit functionality
+                updateNodeMutation.mutate({
+                  id: node.id,
+                  data: { ...node },
+                });
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                deleteNodeMutation.mutate(node.id);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
 
   const handleAddNode = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const newNode: Node = {
-      id: crypto.randomUUID(),
+    const newNode = {
       name: formData.get("name") as string,
       host: formData.get("host") as string,
       port: parseInt(formData.get("port") as string),
       key: formData.get("key") as string,
     };
-    setNodes([...nodes, newNode]);
-    toast({
-      title: "Node added",
-      description: `Node ${newNode.name} has been added successfully.`,
-    });
+    createNodeMutation.mutate(newNode);
   };
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Nodes"
-        description="Manage your backup nodes"
-      >
-        <Dialog>
+      <PageHeader title="Nodes" description="Manage your backup nodes">
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
